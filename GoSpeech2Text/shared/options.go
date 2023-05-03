@@ -1,10 +1,19 @@
 package shared
 
-import "goTest/GoSpeech2Text/providers"
+import (
+	"goTest/GoSpeech2Text/providers"
+	"strconv"
+	"time"
+)
 
 type SpeechToTextOptions struct {
 	_        struct{}
 	Provider providers.Provider
+	// TranscriptionJobName specifies a configuration for creating unique transcription job names.
+	// On AWS, every transcription job needs a unique name. This name must be unique within an AWS account.
+	// This property is ignored on GCP.
+	// See docs for TranscriptionJobNameConfig for more info.
+	TranscriptionJobName TranscriptionJobNameConfig
 	// ContentRedactionConfig is currently only available on AWS.
 	// If nil, content redaction is deactivated.
 	// See AWS docs: https://docs.aws.amazon.com/sdk-for-go/api/service/transcribeservice/#ContentRedaction
@@ -29,8 +38,7 @@ type SpeechToTextOptions struct {
 	// From GCP docs:
 	// If set to 'true', the server will attempt to filter out
 	// profanities, replacing all but the initial character in each filtered word
-	// with asterisks, e.g. "f***". If set to `false` or omitted, profanities
-	// won't be filtered out.
+	// with asterisks, e.g. "f***". If set to `false` or omitted, profanities won't be filtered out.
 	// See GCP docs: https://pkg.go.dev/cloud.google.com/go/speech@v1.15.0/apiv1/speechpb#RecognitionConfig
 	ProfanityFilter bool
 }
@@ -96,3 +104,30 @@ const (
 	RedactionOutputRedacted              RedactionOutput = "redacted"
 	RedactionOutputRedactedAndUnredacted RedactionOutput = "redacted_and_unredacted"
 )
+
+// TranscriptionJobNameConfig is only used on AWS
+type TranscriptionJobNameConfig struct {
+	// TranscriptionJobName is the name of the transcription job that is created.
+	// From AWS docs: "This name is case-sensitive, cannot contain spaces, and must be unique within an
+	// Amazon Web Services account."
+	// Every transcription job on AWS needs a unique name. If TranscriptionJobName is left empty (""),
+	// just the current timestamp (nanoseconds) will be used as job name
+	// (regardless if AppendCurrentTimestamp is true or false).
+	// Other than that, the TranscriptionJobName is not checked for errors.
+	TranscriptionJobName string
+	// AppendCurrentTimestamp says if the current timestamp, at which the transcription job is created, should be
+	// appended to the TranscriptionJobName. Appending the current timestamp makes it easier to create unique
+	// transcription job names. It also allows developers to re-use their options object for multiple transcription jobs,
+	// without having to specify a new transcription job name every time.
+	// The timestamp is the number of nanoseconds since January 1, 1970, UTC
+	AppendCurrentTimestamp bool
+}
+
+func (jobNameConfig TranscriptionJobNameConfig) GetTranscriptionJobName() string {
+	if (jobNameConfig.TranscriptionJobName != "") && !jobNameConfig.AppendCurrentTimestamp {
+		return jobNameConfig.TranscriptionJobName
+	} else {
+		now := time.Now()
+		return jobNameConfig.TranscriptionJobName + strconv.FormatInt(now.UnixNano(), 10)
+	}
+}
