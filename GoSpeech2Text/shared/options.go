@@ -9,6 +9,30 @@ type SpeechToTextOptions struct {
 	// If nil, content redaction is deactivated.
 	// See AWS docs: https://docs.aws.amazon.com/sdk-for-go/api/service/transcribeservice/#ContentRedaction
 	ContentRedactionConfig ContentRedactionConfig
+	// EnableAutomaticPunctuation is currently only available on GCP.
+	// If 'true', adds punctuation to resulting text.
+	// This feature is only available on select languages.
+	// If it is enabled on other languages, it has no effect at all.
+	EnableAutomaticPunctuation bool
+	// EnableSpokenPunctuation is currently only available on GCP.
+	// If 'true', spoken punctuation is replaced by the punctuation symbol.
+	// Example: "how are you question mark" becomes "how are you?"
+	// See GCP docs: https://cloud.google.com/speech-to-text/docs/spoken-punctuation
+	EnableSpokenPunctuation bool
+	// EnableSpokenEmojis is currently only available on GCP.
+	// From GCP docs:
+	// If 'true', adds spoken emoji formatting for the request. This will replace spoken emojis
+	// with the corresponding Unicode symbols in the final transcript.
+	// See GCP docs: https://cloud.google.com/speech-to-text/docs/spoken-emoji
+	EnableSpokenEmojis bool
+	// ProfanityFilter is currently only available on GCP.
+	// From GCP docs:
+	// If set to 'true', the server will attempt to filter out
+	// profanities, replacing all but the initial character in each filtered word
+	// with asterisks, e.g. "f***". If set to `false` or omitted, profanities
+	// won't be filtered out.
+	// See GCP docs: https://pkg.go.dev/cloud.google.com/go/speech@v1.15.0/apiv1/speechpb#RecognitionConfig
+	ProfanityFilter bool
 }
 
 // ContentRedactionConfig Configuration for content redaction.
