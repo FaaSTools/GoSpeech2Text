@@ -15,7 +15,7 @@ type SpeechToTextOptions struct {
 	// See docs for TranscriptionJobNameConfig for more info.
 	TranscriptionJobName TranscriptionJobNameConfig
 	// ContentRedactionConfig is currently only available on AWS.
-	// If nil, content redaction is deactivated.
+	// If undefined, content redaction is deactivated.
 	// See AWS docs: https://docs.aws.amazon.com/sdk-for-go/api/service/transcribeservice/#ContentRedaction
 	ContentRedactionConfig ContentRedactionConfig
 	// EnableAutomaticPunctuation is currently only available on GCP.
@@ -41,6 +41,36 @@ type SpeechToTextOptions struct {
 	// with asterisks, e.g. "f***". If set to `false` or omitted, profanities won't be filtered out.
 	// See GCP docs: https://pkg.go.dev/cloud.google.com/go/speech@v1.15.0/apiv1/speechpb#RecognitionConfig
 	ProfanityFilter bool
+	LanguageConfig  LanguageConfig
+}
+
+type LanguageConfig struct {
+	// LanguageCode The language identification tag (ISO 639 code for the language name-ISO 3166
+	// country code) of the speech that should be transcribed.
+	// Required on GCP, optional on AWS.
+	//
+	// On GCP, if undefined (i.e. empty string), GCP will throw an error.
+	// On AWS, if LanguageCode is undefined (i.e. empty string), one language will be automatically identified.
+	// If LanguageCode is undefined (i.e. empty string) and IdentifyMultipleLanguages is true, multiple languages
+	// will be automatically identified.
+	// Use LanguageOptions to specify a list of languages that are most likely to be spoken in the speech, improving
+	// the accuracy of language identification.
+	LanguageCode string
+	// If LanguageCode is undefined (i.e. empty string), AWS will try to automatically identify the language in
+	// the speech. If in addition to that the IdentifyMultipleLanguages property is set to true, multiple languages
+	// will be automatically identified.
+	// Use LanguageOptions to specify a list of languages that are most likely to be spoken in the speech, improving
+	// the accuracy of language identification.
+	IdentifyMultipleLanguages bool
+	// LanguageOptions is a list of two or more language codes that represent the languages you
+	// think may be present in your media. Including more than five is not recommended.
+	// If you're unsure what languages are present, do not include this parameter.
+	// (doc taken from AWS SDK)
+	//
+	// Using this property only makes sense if LanguageCode is undefined (i.e. empty string), which enables
+	// automatic language identification.
+	// Using this property improves the accuracy of language identification.
+	LanguageOptions []*string
 }
 
 // ContentRedactionConfig Configuration for content redaction.
@@ -124,10 +154,30 @@ type TranscriptionJobNameConfig struct {
 }
 
 func (jobNameConfig TranscriptionJobNameConfig) GetTranscriptionJobName() string {
-	if (jobNameConfig.TranscriptionJobName != "") && !jobNameConfig.AppendCurrentTimestamp {
+	if (jobNameConfig != TranscriptionJobNameConfig{}) && (jobNameConfig.TranscriptionJobName != "") && !jobNameConfig.AppendCurrentTimestamp {
 		return jobNameConfig.TranscriptionJobName
 	} else {
 		now := time.Now()
 		return jobNameConfig.TranscriptionJobName + strconv.FormatInt(now.UnixNano(), 10)
+	}
+}
+
+func GetDefaultSpeechToTextOptions() *SpeechToTextOptions {
+	return &SpeechToTextOptions{
+		Provider: providers.ProviderAWS,
+		TranscriptionJobName: TranscriptionJobNameConfig{
+			TranscriptionJobName:   "s2t-",
+			AppendCurrentTimestamp: true,
+		},
+		ContentRedactionConfig:     ContentRedactionConfig{},
+		EnableAutomaticPunctuation: true,
+		EnableSpokenPunctuation:    false,
+		EnableSpokenEmojis:         false,
+		ProfanityFilter:            false,
+		LanguageConfig: LanguageConfig{
+			LanguageCode:              "",
+			IdentifyMultipleLanguages: false,
+			LanguageOptions:           nil,
+		},
 	}
 }
