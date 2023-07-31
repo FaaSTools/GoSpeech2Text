@@ -79,7 +79,6 @@ func (a GoS2TClient) CloseAllProviderClients() error {
 // If the given options specify a provider, this provider will be used.
 // If the given options don't specify a provider, a provider will be chosen based on heuristics.
 func (a GoS2TClient) S2T(source string, destination string, options SpeechToTextOptions) (GoS2TClient, error) {
-	// TODO
 	if options.Provider == providers.ProviderUnspecified {
 		var err error
 		options, err = a.determineProvider(options, source)

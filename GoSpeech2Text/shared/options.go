@@ -107,7 +107,7 @@ type ContentRedactionConfig struct {
 	// In case a new valid content redaction type is available on AWS, you can also specify a string and circumvent
 	// the abstracted type specified by GoSpeech2Text.
 	//
-	// If the array is left empty (array with zero values), nothing will be redacted. // TODO fact check; default value.
+	// If the array is left empty (array with zero values), nothing will be redacted.
 	// Currently, the array can have a maximum of 11 entries, according to AWS docs (https://docs.aws.amazon.com/transcribe/latest/APIReference/API_ContentRedaction.html).
 	// However, this limit is not enforced by GoSpeech2Text, because this limit might change in the future.
 	// If AWS adds new possible redaction entities, you can specify them using a string instead of the
@@ -116,7 +116,6 @@ type ContentRedactionConfig struct {
 	// Use RedactionEntityAll to redact all possible kinds of personally identifiable information.
 	RedactionEntityTypes []*RedactionEntityType
 	// RedactionOutput specifies if only the redacted transcript, or both the redacted and unredacted transcripts are returned.
-	// TODO check if possible; how are files stored?
 	RedactionOutput RedactionOutput
 }
 

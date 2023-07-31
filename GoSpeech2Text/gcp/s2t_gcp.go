@@ -77,7 +77,6 @@ func (a S2TGoogleCloudPlatform) ExecuteS2TDirect(sourceUrl string, options Speec
 	go func() {
 		defer close(r)
 
-		// TODO execute ExecuteS2T and return file contents.
 		req := &speechpb.RecognizeRequest{
 			Recognizer: "",
 			Config: &speechpb.RecognitionConfig{
@@ -116,7 +115,7 @@ func (a S2TGoogleCloudPlatform) ExecuteS2TDirect(sourceUrl string, options Speec
 }
 
 func StitchResultsTogether(resp *speechpb.RecognizeResponse) string {
-	resultText := "" // TODO str builder
+	resultText := ""
 	for _, res := range resp.Results {
 		var highestConfScore float32 = 0.0
 		highestConfVal := ""

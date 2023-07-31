@@ -115,8 +115,3 @@ func GetFileTypeFromFileName(fileName string) string {
 	}
 	return splits[len(splits)-1]
 }
-
-func AudioToFile(reader io.ReadCloser) (string, error) {
-	// TODO
-	return "", nil
-}

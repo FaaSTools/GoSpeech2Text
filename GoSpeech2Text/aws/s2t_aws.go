@@ -143,16 +143,6 @@ func (a S2TAmazonWebServices) ExecuteS2TDirect(sourceUrl string, options SpeechT
 	go func() {
 		defer close(r)
 
-		if IsAWSUrl(sourceUrl) {
-			// TODO check region, move if necessary
-			sourceFile := ParseAWSUrl(sourceUrl)
-		} else if strings.HasPrefix(sourceUrl, "http") { // file somewhere else online
-			// TODO upload
-
-		} else { // local file
-			// TODO upload
-		}
-
 		originalJob, err := a.executeS2TInternal(sourceUrl, getTempDestination(sourceUrl, options), options)
 		if err != nil {
 			r <- S2TDirectResult{
@@ -192,7 +182,6 @@ func (a S2TAmazonWebServices) ExecuteS2TDirect(sourceUrl string, options SpeechT
 			}
 		}
 		fmt.Printf("job done\n")
-		// TODO download file and return file contents
 	}()
 
 	return r
@@ -258,24 +247,6 @@ func (a S2TAmazonWebServices) SupportsFileType(fileType string) bool {
 // getAwsFileType turns the given fileType string into an AWS media format type.
 // The given fileType must not start with a period.
 func getAwsFileType(fileType string) types.MediaFormat {
-	/*
-		switch fileType {
-		case "mp3":
-			return types.MediaFormatMp3
-		case "mp4":
-			return types.MediaFormatMp4
-		case "wav":
-			return types.MediaFormatWav
-		case "flac":
-			return types.MediaFormatFlac
-		case "ogg":
-			return types.MediaFormatOgg
-		case "amr":
-			return types.MediaFormatAmr
-		case "webm":
-			return types.MediaFormatWebm
-		}
-	*/
 	return types.MediaFormat(fileType)
 }
 
