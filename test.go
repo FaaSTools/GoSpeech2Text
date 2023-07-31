@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/session"
-	GoText2Speech "goTest/GoSpeech2Text"
-	. "goTest/GoSpeech2Text/shared"
+	GoText2Speech "github.com/FaaSTools/GoText2Speech/GoSpeech2Text"
+	"github.com/FaaSTools/GoText2Speech/GoSpeech2Text/providers"
+	. "github.com/FaaSTools/GoText2Speech/GoSpeech2Text/shared"
 	"os"
 )
 
@@ -12,24 +12,16 @@ import (
 func main() {
 	fmt.Println("Starting speech transcription...")
 
-	s2tClient := GoText2Speech.CreateGoS2TClient(CredentialsHolder{
-		AwsCredentials: &session.Options{
-			SharedConfigState: session.SharedConfigEnable,
-			Profile:           "davidmeyer",
-		},
-	}, "us-east-1")
+	s2tClient := GoText2Speech.CreateGoS2TClient(nil, "us-east-1")
 
-	// TODO
 	options := GetDefaultSpeechToTextOptions()
-	options.LanguageConfig.LanguageCode = "en"
+	options.LanguageConfig.LanguageCode = "en-US"
+	options.Provider = providers.ProviderAWS
+
+	bucket := "test"
 
 	var err error = nil
-	s2tClient, err = s2tClient.S2T("https://davemeyer-test.s3.amazonaws.com/testfile.mp3", "https://davemeyer-test.s3.amazonaws.com/S2T_Test_file_01.txt", *options)
-
-	s2tClient.AwsTempBucket = "davemeyer-test"
-	s2tClient, err = s2tClient.S2T("D:\\testfile.mp3", "D:\\S2T_Test_file_02.txt", *options)
-
-	// TODO GCP example
+	s2tClient, err = s2tClient.S2T("https://"+bucket+".s3.amazonaws.com/testfile.mp3", "https://"+bucket+".s3.amazonaws.com/testfile.txt", *options)
 
 	if err != nil {
 		fmt.Println(err.Error())

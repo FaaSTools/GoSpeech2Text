@@ -1,34 +1,125 @@
 package aws
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/transcribeservice"
-	ContentRedaction "github.com/aws/aws-sdk-go/service/transcribeservice"
-	. "goTest/GoSpeech2Text/shared"
+	. "github.com/FaaSTools/GoText2Speech/GoSpeech2Text/shared"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	transcribe "github.com/aws/aws-sdk-go-v2/service/transcribe"
+	"github.com/aws/aws-sdk-go-v2/service/transcribe/types"
 	"reflect"
 	"strings"
-	"unsafe"
+	"time"
 )
 
 type S2TAmazonWebServices struct {
-	s2tClient   *transcribeservice.TranscribeService
 	credentials CredentialsHolder
-	sess        client.ConfigProvider
+	s2tClient   *transcribe.Client
+	region      string
+	//sess        client.ConfigProvider
 }
 
-func (a S2TAmazonWebServices) CreateServiceClient(credentials CredentialsHolder, region string) S2TProvider {
-	credentials.AwsCredentials.Config.Region = &region
-	sess := session.Must(session.NewSessionWithOptions(*credentials.AwsCredentials))
-	a.sess = sess
-	a.s2tClient = transcribeservice.New(sess)
-	return a
+type CredentialsProvider struct {
+	credentials aws.Credentials
+}
+
+func (b CredentialsProvider) Retrieve(ctx context.Context) (aws.Credentials, error) {
+	return b.credentials, nil
+}
+
+func (a S2TAmazonWebServices) CreateServiceClient(cred CredentialsHolder, region string) (S2TProvider, error) {
+	credProv := CredentialsProvider{
+		credentials: *cred.AwsCredentials,
+	}
+	a.credentials = cred
+	a.region = region
+	a.s2tClient = transcribe.New(transcribe.Options{
+		Credentials: credProv,
+		Region:      region,
+	})
+	return a, nil
 }
 
 func (a S2TAmazonWebServices) TransformOptions(text string, options SpeechToTextOptions) (string, SpeechToTextOptions, error) {
 	return text, options, nil
+}
+
+func (a S2TAmazonWebServices) executeS2TInternal(sourceUrl string, destination string, options SpeechToTextOptions) (*transcribe.StartTranscriptionJobOutput, error) {
+	jobName := options.TranscriptionJobName.GetTranscriptionJobName()
+
+	contentRedaction := types.ContentRedaction{}
+
+	if !reflect.DeepEqual(options.ContentRedactionConfig, ContentRedactionConfig{}) {
+		contentRedaction.RedactionType = types.RedactionType(options.ContentRedactionConfig.ContentRedactionType)
+		contentRedaction.RedactionOutput = types.RedactionOutput(options.ContentRedactionConfig.RedactionOutput)
+		var entityTypes []types.PiiEntityType
+		for _, ent := range options.ContentRedactionConfig.RedactionEntityTypes {
+			entityTypes = append(entityTypes, types.PiiEntityType(*ent))
+		}
+		contentRedaction.PiiEntityTypes = entityTypes
+	}
+
+	identifyLanguage := false
+	var languageCode = &options.LanguageConfig.LanguageCode
+	// if language code is empty string: identify language automatically
+	if strings.EqualFold("", *languageCode) {
+		if !options.LanguageConfig.IdentifyMultipleLanguages {
+			identifyLanguage = true
+		}
+	}
+
+	bucket, key, destinationErr := GetBucketAndKeyFromAWSDestination(destination)
+	if destinationErr != nil {
+		return nil, errors.Join(errors.New(fmt.Sprintf("Couldn't run transcription because destination '%s' couldn't be parsed into AWS S3 bucket and key.", destination)), destinationErr)
+	}
+
+	var languageOptions []types.LanguageCode
+	for _, l := range options.LanguageConfig.LanguageOptions {
+		languageOptions = append(languageOptions, types.LanguageCode(*l))
+	}
+
+	awsContentRedaction := a.getAwsContentRedactionOptions(options)
+
+	fileType := GetFileTypeFromFileName(sourceUrl)
+	mediaFormat := getAwsFileType(fileType)
+
+	jobInput := &transcribe.StartTranscriptionJobInput{
+		Media: &types.Media{
+			MediaFileUri: &sourceUrl,
+		},
+		TranscriptionJobName:      &jobName,
+		ContentRedaction:          awsContentRedaction,
+		IdentifyLanguage:          &identifyLanguage,
+		IdentifyMultipleLanguages: &options.LanguageConfig.IdentifyMultipleLanguages,
+		JobExecutionSettings:      nil,
+		KMSEncryptionContext:      nil,
+		LanguageCode:              types.LanguageCode(*languageCode),
+		LanguageIdSettings:        nil,
+		LanguageOptions:           languageOptions,
+		MediaFormat:               mediaFormat,
+		MediaSampleRateHertz:      nil,
+		ModelSettings:             nil,
+		OutputBucketName:          &bucket,
+		OutputEncryptionKMSKeyId:  nil,
+		OutputKey:                 &key,
+		Settings:                  nil,
+		Subtitles:                 nil,
+		Tags:                      nil,
+	}
+	job, err := a.s2tClient.StartTranscriptionJob(context.Background(), jobInput)
+
+	if err != nil {
+		errNew := errors.New("Error while starting transcription job: " + err.Error())
+		fmt.Printf(errNew.Error())
+		return job, errNew
+	}
+
+	return job, nil
+}
+
+func getTempDestination(sourceUrl string, options SpeechToTextOptions) string {
+	return fmt.Sprintf("s3://%s/%d.%s", options.TempBucket, time.Now().UnixMilli(), options.DefaultTextFileExtension)
 }
 
 // ExecuteS2T executes Speech-to-Text using AWS Transcribe service. The audio file on the given URL is transcribed into text
@@ -37,62 +128,8 @@ func (a S2TAmazonWebServices) TransformOptions(text string, options SpeechToText
 // If an error occurs, returns empty string and error.
 // If no error occurs, error return value is nil.
 func (a S2TAmazonWebServices) ExecuteS2T(sourceUrl string, destination string, options SpeechToTextOptions) error {
-	jobName := options.TranscriptionJobName.GetTranscriptionJobName()
-
-	contentRedaction := ContentRedaction.ContentRedaction{}
-
-	if !reflect.DeepEqual(options.ContentRedactionConfig, ContentRedactionConfig{}) {
-		contentRedaction.RedactionType = (*string)(&options.ContentRedactionConfig.ContentRedactionType)
-		contentRedaction.RedactionOutput = (*string)(&options.ContentRedactionConfig.RedactionOutput)
-		contentRedaction.PiiEntityTypes = *(*[]*string)(unsafe.Pointer(&options.ContentRedactionConfig.RedactionEntityTypes))
-	}
-
-	identifyLanguage := false
-	var languageCode *string = nil
-	if strings.EqualFold("", options.LanguageConfig.LanguageCode) {
-		languageCode = &options.LanguageConfig.LanguageCode
-		if !options.LanguageConfig.IdentifyMultipleLanguages {
-			identifyLanguage = true
-		}
-	}
-
-	bucket, key, destinationErr := GetBucketAndKeyFromAWSDestination(destination)
-	if destinationErr != nil {
-		return errors.Join(errors.New(fmt.Sprintf("Couldn't run transcription because destination '%s' couldn't be parsed into AWS S3 bucket and key.", destination)), destinationErr)
-	}
-
-	media := transcribeservice.Media{
-		MediaFileUri: &destination,
-		// TODO redaction
-	}
-
-	// TODO other options
-	job, err := a.s2tClient.StartTranscriptionJob(&transcribeservice.StartTranscriptionJobInput{
-		ContentRedaction:          &contentRedaction,
-		IdentifyLanguage:          &identifyLanguage,
-		IdentifyMultipleLanguages: &options.LanguageConfig.IdentifyMultipleLanguages,
-		JobExecutionSettings:      nil,
-		KMSEncryptionContext:      nil,
-		LanguageCode:              languageCode,
-		LanguageIdSettings:        nil,
-		LanguageOptions:           options.LanguageConfig.LanguageOptions,
-		Media:                     &media,
-		MediaFormat:               nil,
-		MediaSampleRateHertz:      nil,
-		ModelSettings:             nil,
-		OutputBucketName:          &bucket,
-		OutputKey:                 &key,
-		TranscriptionJobName:      &jobName,
-	})
-	fmt.Printf("%s", job)
-
-	if err != nil {
-		errNew := errors.New("Error while starting transcription job: " + err.Error())
-		fmt.Printf(errNew.Error())
-		return errNew
-	}
-
-	return nil
+	_, err := a.executeS2TInternal(sourceUrl, destination, options)
+	return err
 }
 
 // ExecuteS2TDirect executes Speech-to-Text using AWS Transcribe service. The audio file on the given URL is transcribed into text
@@ -100,9 +137,82 @@ func (a S2TAmazonWebServices) ExecuteS2T(sourceUrl string, destination string, o
 // The source string can either be an AWS S3 URI (starting with "s3://") or AWS S3 Object URL (starting with "https://").
 // If an error occurs, returns empty string and error.
 // If no error occurs, error return value is nil.
-func (a S2TAmazonWebServices) ExecuteS2TDirect(sourceUrl string, options SpeechToTextOptions) (string, error) {
-	// TODO execute ExecuteS2T and return file contents.
-	return "", nil
+func (a S2TAmazonWebServices) ExecuteS2TDirect(sourceUrl string, options SpeechToTextOptions) <-chan S2TDirectResult {
+	r := make(chan S2TDirectResult)
+
+	go func() {
+		defer close(r)
+
+		if IsAWSUrl(sourceUrl) {
+			// TODO check region, move if necessary
+			sourceFile := ParseAWSUrl(sourceUrl)
+		} else if strings.HasPrefix(sourceUrl, "http") { // file somewhere else online
+			// TODO upload
+
+		} else { // local file
+			// TODO upload
+		}
+
+		originalJob, err := a.executeS2TInternal(sourceUrl, getTempDestination(sourceUrl, options), options)
+		if err != nil {
+			r <- S2TDirectResult{
+				Text: "",
+				Err:  err,
+			}
+			return
+		}
+
+		jobName := originalJob.TranscriptionJob.TranscriptionJobName
+		jobStatus := originalJob.TranscriptionJob.TranscriptionJobStatus
+		var err2 error = nil
+		var job *transcribe.GetTranscriptionJobOutput = nil
+		now := time.Now()
+		lastCheckTime := now.UnixMilli()
+		for jobStatus != "COMPLETED" {
+			if jobStatus == "FAILED" {
+				r <- S2TDirectResult{
+					Text: "",
+					Err:  errors.New(fmt.Sprintf("Error occurred during transcription: %s\n", *job.TranscriptionJob.FailureReason)),
+				}
+				return
+			}
+
+			now = time.Now()
+			if (now.UnixMilli() - lastCheckTime) > options.TranscriptionJobCheckIntervalMs {
+				//fmt.Printf("Check job status of %s\n", *jobName)
+				job, err2 = a.s2tClient.GetTranscriptionJob(context.Background(), &transcribe.GetTranscriptionJobInput{TranscriptionJobName: jobName})
+				if err2 != nil {
+					r <- S2TDirectResult{
+						Text: "",
+						Err:  err2,
+					}
+					return
+				}
+				jobStatus = job.TranscriptionJob.TranscriptionJobStatus
+			}
+		}
+		fmt.Printf("job done\n")
+		// TODO download file and return file contents
+	}()
+
+	return r
+}
+
+// getAwsContentRedactionOptions converts the abstracted GoSpeech2Text content redaction options to AWS content redaction options.
+func (a S2TAmazonWebServices) getAwsContentRedactionOptions(options SpeechToTextOptions) *types.ContentRedaction {
+	var awsContentRedaction *types.ContentRedaction = nil
+	if !options.ContentRedactionConfig.IsEmpty() {
+		awsContentRedaction = &types.ContentRedaction{
+			RedactionOutput: types.RedactionOutput(options.ContentRedactionConfig.RedactionOutput),
+			RedactionType:   types.RedactionType(options.ContentRedactionConfig.ContentRedactionType),
+		}
+		var piiEntityTypes []types.PiiEntityType = nil
+		for _, entityType := range options.ContentRedactionConfig.RedactionEntityTypes {
+			piiEntityTypes = append(piiEntityTypes, types.PiiEntityType(*entityType))
+		}
+		awsContentRedaction.PiiEntityTypes = piiEntityTypes
+	}
+	return awsContentRedaction
 }
 
 // GetBucketAndKeyFromAWSDestination receives either an AWS S3 URI (starting with "s3://") or
@@ -124,4 +234,51 @@ func GetBucketAndKeyFromAWSDestination(destination string) (string, string, erro
 	} else {
 		return "", "", errors.New(fmt.Sprintf("The given destination '%s' is not a valid S3 URI or S3 Object URL.", destination))
 	}
+}
+
+func (a S2TAmazonWebServices) IsURLonOwnStorage(url string) bool {
+	return IsAWSUrl(url)
+}
+
+func (a S2TAmazonWebServices) CloseServiceClient() error {
+	// AWS clients cannot be closed
+	return nil
+}
+
+func (a S2TAmazonWebServices) SupportsFileType(fileType string) bool {
+	values := types.MediaFormatMp3.Values()
+	for _, supFileType := range values {
+		if strings.EqualFold(fileType, string(supFileType)) {
+			return true
+		}
+	}
+	return false
+}
+
+// getAwsFileType turns the given fileType string into an AWS media format type.
+// The given fileType must not start with a period.
+func getAwsFileType(fileType string) types.MediaFormat {
+	/*
+		switch fileType {
+		case "mp3":
+			return types.MediaFormatMp3
+		case "mp4":
+			return types.MediaFormatMp4
+		case "wav":
+			return types.MediaFormatWav
+		case "flac":
+			return types.MediaFormatFlac
+		case "ogg":
+			return types.MediaFormatOgg
+		case "amr":
+			return types.MediaFormatAmr
+		case "webm":
+			return types.MediaFormatWebm
+		}
+	*/
+	return types.MediaFormat(fileType)
+}
+
+func (a S2TAmazonWebServices) SupportsDirectFileInput() bool {
+	return false
 }

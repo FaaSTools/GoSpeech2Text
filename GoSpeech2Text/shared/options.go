@@ -1,8 +1,9 @@
 package shared
 
 import (
-	"goTest/GoSpeech2Text/providers"
+	"github.com/FaaSTools/GoText2Speech/GoSpeech2Text/providers"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -42,6 +43,20 @@ type SpeechToTextOptions struct {
 	// See GCP docs: https://pkg.go.dev/cloud.google.com/go/speech@v1.15.0/apiv1/speechpb#RecognitionConfig
 	ProfanityFilter bool
 	LanguageConfig  LanguageConfig
+	// TranscriptionJobCheckIntervalMs When using S2TDirect on certain providers (like AWS), GoSpeech2Text needs to
+	// periodically check the status of the transcription job to figure out when the result is ready for download.
+	// TranscriptionJobCheckIntervalMs specifies the time interval in milliseconds in which the job status
+	// request should be executed.
+	// A lower value causes more requests, but also returns the result sooner.
+	// A higher value causes fewer requests, but returns the result later.
+	// Default value is 500ms.
+	TranscriptionJobCheckIntervalMs int64
+	// DefaultTextFileExtension specifies the file extension (without preceding period) that should be used when
+	// GoSpeech2Text creates its own file URLs.
+	// For example: If user executes S2TDirect on AWS, the created text file needs to be stored on AWS S3 first, and
+	// subsequently downloaded and returned. For that, a temporary storage URL is created with DefaultTextFileExtension.
+	DefaultTextFileExtension string
+	TempBucket               string
 }
 
 type LanguageConfig struct {
@@ -135,6 +150,10 @@ const (
 	RedactionOutputRedactedAndUnredacted RedactionOutput = "redacted_and_unredacted"
 )
 
+func (a ContentRedactionConfig) IsEmpty() bool {
+	return strings.EqualFold(string(a.RedactionOutput), "") && strings.EqualFold(string(a.ContentRedactionType), "") && (len(a.RedactionEntityTypes) < 1)
+}
+
 // TranscriptionJobNameConfig is only used on AWS
 type TranscriptionJobNameConfig struct {
 	// TranscriptionJobName is the name of the transcription job that is created.
@@ -179,5 +198,10 @@ func GetDefaultSpeechToTextOptions() *SpeechToTextOptions {
 			IdentifyMultipleLanguages: false,
 			LanguageOptions:           nil,
 		},
+		TranscriptionJobCheckIntervalMs: 500,
+		DefaultTextFileExtension:        "txt",
 	}
 }
+
+// DefaultProvider is used when heuristics end up in a tie (i.e. no provider is the best choice)
+const DefaultProvider = providers.ProviderAWS
