@@ -24,6 +24,10 @@ type CredentialsProvider struct {
 	credentials aws.Credentials
 }
 
+func (a S2TAmazonWebServices) GetDefaultRegion() string {
+	return "us-east-1"
+}
+
 func (b CredentialsProvider) Retrieve(ctx context.Context) (aws.Credentials, error) {
 	return b.credentials, nil
 }
@@ -92,20 +96,11 @@ func (a S2TAmazonWebServices) executeS2TInternal(sourceUrl string, destination s
 		ContentRedaction:          awsContentRedaction,
 		IdentifyLanguage:          &identifyLanguage,
 		IdentifyMultipleLanguages: &options.LanguageConfig.IdentifyMultipleLanguages,
-		JobExecutionSettings:      nil,
-		KMSEncryptionContext:      nil,
 		LanguageCode:              types.LanguageCode(*languageCode),
-		LanguageIdSettings:        nil,
 		LanguageOptions:           languageOptions,
 		MediaFormat:               mediaFormat,
-		MediaSampleRateHertz:      nil,
-		ModelSettings:             nil,
 		OutputBucketName:          &bucket,
-		OutputEncryptionKMSKeyId:  nil,
 		OutputKey:                 &key,
-		Settings:                  nil,
-		Subtitles:                 nil,
-		Tags:                      nil,
 	}
 	job, err := a.s2tClient.StartTranscriptionJob(context.Background(), jobInput)
 
@@ -252,4 +247,8 @@ func getAwsFileType(fileType string) types.MediaFormat {
 
 func (a S2TAmazonWebServices) SupportsDirectFileInput() bool {
 	return false
+}
+
+func (a S2TAmazonWebServices) GetStorageUrl(region string, bucket string, key string) string {
+	return "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key
 }

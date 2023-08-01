@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"github.com/FaaSTools/GoText2Speech/GoSpeech2Text/providers"
 	"strings"
 	"testing"
 )
@@ -25,5 +26,11 @@ func TestGetFileTypeFromFileName(t *testing.T) {
 	result4 := GetFileTypeFromFileName("test.tar.gz")
 	if !strings.EqualFold(result4, "gz") {
 		t.Error("wrong filetype: Got ", result4)
+	}
+}
+
+func TestProviderToGoStorageProvider(t *testing.T) {
+	if len(providers.GetAllProviders()) > 2 {
+		t.Error("New provider detected. Update ProviderToGoStorageProvider function.")
 	}
 }

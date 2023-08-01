@@ -5,14 +5,20 @@ import (
 	speechpb "cloud.google.com/go/speech/apiv2/speechpb"
 	"cloud.google.com/go/storage"
 	"context"
+	"errors"
 	"fmt"
 	. "github.com/FaaSTools/GoText2Speech/GoSpeech2Text/shared"
 	"io"
+	"os"
 	"strings"
 )
 
 type S2TGoogleCloudPlatform struct {
 	s2tClient *speech.Client
+}
+
+func (a S2TGoogleCloudPlatform) GetDefaultRegion() string {
+	return "us-east1"
 }
 
 func (a S2TGoogleCloudPlatform) CreateServiceClient(credentials CredentialsHolder, region string) (S2TProvider, error) {
@@ -97,8 +103,49 @@ func (a S2TGoogleCloudPlatform) ExecuteS2TDirect(sourceUrl string, options Speec
 				Uri: sourceUrl,
 			}
 		} else {
+			var content []byte = nil
+
+			if strings.HasPrefix(sourceUrl, "http") { // file somewhere else online
+				reader, errDownload := ReadFromUrl(sourceUrl)
+				if errDownload != nil {
+					r <- S2TDirectResult{
+						Text: "",
+						Err:  errDownload,
+					}
+					return
+				}
+
+				// close reader after function call ended
+				defer func(Reader io.ReadCloser) {
+					errClose := Reader.Close()
+					if errClose != nil {
+						fmt.Printf(errors.Join(errors.New(fmt.Sprintf("A non-fatal error occurred while closing the HTTP response for the source file '%s'.", sourceUrl)), errClose).Error())
+					}
+				}(reader)
+
+				var errReader error = nil
+				content, errReader = io.ReadAll(reader)
+				if errReader != nil {
+					r <- S2TDirectResult{
+						Text: "",
+						Err:  errors.Join(errors.New("error while reading contents of file reader from URL"), errReader),
+					}
+					return
+				}
+			} else { // local file
+				var errReadFile error = nil
+				content, errReadFile = os.ReadFile(sourceUrl)
+				if errReadFile != nil {
+					r <- S2TDirectResult{
+						Text: "",
+						Err:  errors.Join(errors.New("error while reading contents of local file"), errReadFile),
+					}
+					return
+				}
+			}
+
 			req.AudioSource = &speechpb.RecognizeRequest_Content{
-				Content: nil,
+				Content: content,
 			}
 		}
 
@@ -162,4 +209,8 @@ func (a S2TGoogleCloudPlatform) SupportsFileType(fileType string) bool {
 
 func (a S2TGoogleCloudPlatform) SupportsDirectFileInput() bool {
 	return true
+}
+
+func (a S2TGoogleCloudPlatform) GetStorageUrl(region string, bucket string, key string) string {
+	return "gs://" + bucket + "/" + key
 }

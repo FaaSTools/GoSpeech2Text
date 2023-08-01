@@ -21,4 +21,10 @@ type S2TProvider interface {
 	// File type needs to be specified without preceding period.
 	SupportsFileType(fileType string) bool
 	SupportsDirectFileInput() bool
+	// GetDefaultRegion returns a provider-specific default region.
+	// Usually, if region is set to nil, the region is inferred from the source file destination.
+	// However, if the input file is a local path or a public URL, there is no region to infer.
+	// In that case, the result of GetDefaultRegion is used.
+	GetDefaultRegion() string
+	GetStorageUrl(region string, bucket string, key string) string
 }

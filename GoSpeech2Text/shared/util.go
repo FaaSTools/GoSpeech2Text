@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/FaaSTools/GoStorage/gostorage"
+	"github.com/FaaSTools/GoText2Speech/GoSpeech2Text/providers"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 )
@@ -114,4 +116,69 @@ func GetFileTypeFromFileName(fileName string) string {
 		return ""
 	}
 	return splits[len(splits)-1]
+}
+
+func StoreAudioToLocalFile(audioData io.Reader, file *os.File) error {
+	var bytes = make([]byte, 1024)
+	for {
+		numBytes, err := audioData.Read(bytes)
+		_, writeErr := file.Write(bytes)
+		if (numBytes < 1) || (err != nil) { // done reading
+			break
+		}
+		if writeErr != nil {
+			_ = os.Remove(file.Name())
+			return writeErr
+		}
+	}
+	return nil
+}
+
+// ReadFromUrl reads the contents of the file stored at the given URL and returns it as a reader (io.ReadCloser).
+// Works on any publicly available URL.
+// If a fatal error occurs, the returned reader is nil and error is returned.
+// If no error occurs, the error return value is nil.
+//
+// The returned io.ReadCloser is not automatically closed. Make sure to close it yourself.
+func ReadFromUrl(url string) (io.ReadCloser, error) {
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, errors.Join(errors.New(fmt.Sprintf("Couldn't download the source file '%s'.", url)), err)
+	}
+	return response.Body, nil
+}
+
+// ReadTextFromUrl reads the contents of the file stored at the given URL and returns it as a string.
+// Works on any publicly available URL.
+// If a fatal error occurs, the returned string is empty (i.e. "") and error is returned.
+// If a non-fatal error occurs, the error is printed via fmt, but not returned.
+// If no error occurs, the error return value is nil.
+func ReadTextFromUrl(url string) (string, error) {
+	reader, err := ReadFromUrl(url)
+
+	// close reader after function call ended
+	defer func(Reader io.ReadCloser) {
+		err2 := Reader.Close()
+		if err2 != nil {
+			fmt.Printf(errors.Join(errors.New(fmt.Sprintf("A non-fatal error occurred while closing the HTTP response for the source file '%s'.", url)), err).Error())
+		}
+	}(reader)
+
+	textBytes, err3 := io.ReadAll(reader)
+	if err3 != nil {
+		return "", errors.Join(errors.New(fmt.Sprintf("Couldn't download the source file '%s'. An error occurred while reading body.", url)), err)
+	}
+	text := string(textBytes)
+	return text, nil
+}
+
+func ProviderToGoStorageProvider(provider providers.Provider) gostorage.ProviderType {
+	switch provider {
+	case providers.ProviderGCP:
+		return gostorage.ProviderGoogle
+	case providers.ProviderAWS:
+		fallthrough
+	default:
+		return gostorage.ProviderAWS
+	}
 }
