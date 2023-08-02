@@ -88,7 +88,7 @@ func (a S2TAmazonWebServices) executeS2TInternal(sourceUrl string, destination s
 	fileType := GetFileTypeFromFileName(sourceUrl)
 	mediaFormat := getAwsFileType(fileType)
 
-	jobInput := &transcribe.StartTranscriptionJobInput{
+	jobInput := transcribe.StartTranscriptionJobInput{
 		Media: &types.Media{
 			MediaFileUri: &sourceUrl,
 		},
@@ -102,7 +102,7 @@ func (a S2TAmazonWebServices) executeS2TInternal(sourceUrl string, destination s
 		OutputBucketName:          &bucket,
 		OutputKey:                 &key,
 	}
-	job, err := a.s2tClient.StartTranscriptionJob(context.Background(), jobInput)
+	job, err := a.s2tClient.StartTranscriptionJob(context.Background(), &jobInput)
 
 	if err != nil {
 		errNew := errors.New("Error while starting transcription job: " + err.Error())
